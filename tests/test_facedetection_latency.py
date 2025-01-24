@@ -61,12 +61,29 @@ face_rec.connect(desktop.camera)
 desktop.camera.register_callback(on_image)
 face_rec.register_callback(on_faces)
 
+# Initialize variables for calculating FPS
+frame_count = 0
+start_time = time.time()
+
 while True:
     img = imgs_buffer.get()
     faces = faces_buffer.get()
 
     for face in faces:
         utils_cv2.draw_bbox_on_image(face, img)
+
+    # Calculate FPS
+    frame_count += 1
+    elapsed_time = time.time() - start_time
+    if elapsed_time >= 1.0:  # update FPS every second
+        # it depends on the camera you are using, the camera (Integrated_Webcam_HD) I am using is capped at 30fps
+        # you can use cmd "v4l2-ctl -d /dev/video0 --list-formats-ext"
+        # to check the supported formats, resolutions, and frame rates for your camera
+        fps = frame_count / elapsed_time
+        print(f"FPS: {fps:.2f}")
+        # reset the variables
+        frame_count = 0
+        start_time = time.time()
 
     cv2.imshow("", img)
     cv2.waitKey(1)
