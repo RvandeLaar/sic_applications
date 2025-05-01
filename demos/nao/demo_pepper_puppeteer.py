@@ -10,6 +10,7 @@ from sic_framework.devices.common_naoqi.naoqi_autonomous import (
     NaoBackgroundMovingRequest,
     NaoBasicAwarenessRequest,
     NaoRestRequest,
+    NaoSetAutonomousLifeRequest,
     NaoWakeUpRequest,
 )
 from sic_framework.devices.common_naoqi.naoqi_motion import (
@@ -30,60 +31,60 @@ class PuppeteerApplication:
     def __init__(self, master_ip="10.0.0.165", puppet_ip="10.0.0.196"):
 
         self.conf = NaoMotionStreamerConf(samples_per_second=30)
+        # self.puppet_master = Pepper(
+        #     master_ip,
+        #     motion_stream_conf=self.conf,
+        #     dev_test=True,
+        #     test_repo="/home/karen/social-interaction-cloud",
+        # )
         self.puppet_master = Pepper(
-            master_ip,
-            motion_stream_conf=self.conf,
-            dev_test=True,
-            test_repo="/Users/apple/Desktop/SAIL/SIC_Development/social-interaction-cloud",
+            master_ip, motion_stream_conf=self.conf, dev_test=True
         )
-        # self.puppet_master = Pepper(master_ip, motion_stream_conf=self.conf, dev_test=True)
 
-        self.puppet = Pepper(
-            puppet_ip,
-            dev_test=True,
-            test_repo="/Users/apple/Desktop/SAIL/SIC_Development/social-interaction-cloud",
-        )
-        # self.puppet = Pepper(puppet_ip, dev_test=True)
+        # self.puppet = Pepper(
+        #     puppet_ip,
+        #     dev_test=True,
+        #     test_repo="/home/karen/social-interaction-cloud",
+        # )
+        self.puppet = Pepper(puppet_ip, dev_test=True)
 
         self._setup_robots()
 
         self.is_paused = False
 
-        # register master callback to get joints value
-        # self.puppet_master.motion_streaming.register_callback(self.on_joint_values)
         # register callback for tactile sensor
         self.puppet_master.tactile_sensor.register_callback(self.on_touch)
 
     def _setup_robots(self):
+        print(
+            "----------------------------------Turn off the autonomous abilities on the master Pepper----------------------------------"
+        )
+        # Completely disable all autonomous capabilities (including obstacle avoidance) on the master Pepper to prevent interference
+        # all the stiffness of its motors will be off, so it will slouch down
+        self.puppet_master.autonomous.request(NaoSetAutonomousLifeRequest("disabled"))
 
         print(
             "----------------------------------Waking up robots----------------------------------"
         )
-        # wake up robots (for pepper, the stiffness can't be set when it is in rest mode, unlike nao)
+        # wake up robots (Important: for pepper, the stiffness can't be set when it is in rest mode, unlike nao)
         self.puppet_master.autonomous.request(NaoWakeUpRequest())
         self.puppet.autonomous.request(NaoWakeUpRequest())
-        # self.puppet_master.motion.request(NaoPostureRequest("Stand", 0.5))
-        # self.puppet.motion.request(NaoPostureRequest("Stand", 0.5))
 
         print(
             "----------------------------------Setting stiffness of robots----------------------------------"
         )
-        # Turn off basic awareness and background moving
-        # self.puppet_master.autonomous.request(NaoBasicAwarenessRequest(False))
-        # self.puppet_master.autonomous.request(NaoBackgroundMovingRequest(False))
 
         # First, turn off the smart stiffness to avoid interference and make the movement of the master pepper easier
         self.puppet_master.motion.request(NaoqiSmartStiffnessRequest(False))
-        # somehow the stiffness couldn't be set via request, more tests are needed
-        self.puppet_master.stiffness.request(Stiffness(0.0, joints=JOINTS))
+        self.puppet.motion.request(NaoqiSmartStiffnessRequest(False))
 
-        # self.puppet.autonomous.request(NaoBasicAwarenessRequest(False))
-        # self.puppet.autonomous.request(NaoBackgroundMovingRequest(False))
+        # On Pepper, stiffness somehow can't be set at the individual joint level, so we just pass the chains instead of the joints
+        self.puppet_master.stiffness.request(
+            Stiffness(0.0, joints=JOINTS, enable_joint_list_generation=False)
+        )
+
+        # Set the stiffness of the puppet to 1.0 to control the joints fully
         self.puppet.stiffness.request(Stiffness(1, joints=JOINTS))
-
-        # Start both robots in rest pose
-        # self.puppet.autonomous.request(NaoRestRequest())
-        # self.puppet_master.autonomous.request(NaoRestRequest())
 
     def on_touch(self, message):
         if self.is_paused:
@@ -115,15 +116,14 @@ class PuppeteerApplication:
             NaoqiTextToSpeechRequest("We are done puppeteering", language="English")
         )
 
-        # self.puppet_master.stiffness.request(Stiffness(0.7, joints=JOINTS))
         self.puppet_master.motion_streaming.request(StopStreaming())
 
         # Set both robots in rest pose again
         self.puppet_master.motion.request(NaoqiSmartStiffnessRequest(True))
-        # self.puppet_master.autonomous.request(NaoRestRequest())
-        # self.puppet.autonomous.request(NaoRestRequest())
-        self.puppet.stiffness.request(Stiffness(0, joints=JOINTS))
-        self.puppet_master.stiffness.request(Stiffness(0, joints=JOINTS))
+        self.puppet_master.autonomous.request(NaoRestRequest())
+        self.puppet.autonomous.request(NaoRestRequest())
+        # self.puppet.stiffness.request(Stiffness(0, joints=JOINTS))
+        # self.puppet_master.stiffness.request(Stiffness(0, joints=JOINTS))
 
 
 if __name__ == "__main__":
