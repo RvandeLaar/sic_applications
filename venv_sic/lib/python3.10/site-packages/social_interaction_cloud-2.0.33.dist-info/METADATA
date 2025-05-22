@@ -1,0 +1,62 @@
+Metadata-Version: 2.4
+Name: social-interaction-cloud
+Version: 2.0.33
+Author: Koen Hindriks
+Author-email: k.v.hindriks@vu.nl
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: opencv-python
+Requires-Dist: paramiko
+Requires-Dist: Pillow
+Requires-Dist: pyaudio
+Requires-Dist: PyTurboJPEG
+Requires-Dist: pyspacemouse
+Requires-Dist: redis
+Requires-Dist: scp
+Requires-Dist: six
+Provides-Extra: dev
+Requires-Dist: black==24.10.0; extra == "dev"
+Requires-Dist: isort==5.13.2; extra == "dev"
+Requires-Dist: pre-commit==4.0.1; extra == "dev"
+Requires-Dist: twine; extra == "dev"
+Requires-Dist: wheel; extra == "dev"
+Provides-Extra: dialogflow
+Requires-Dist: google-cloud-dialogflow; extra == "dialogflow"
+Provides-Extra: google-tts
+Requires-Dist: google-cloud-texttospeech; extra == "google-tts"
+Provides-Extra: face-detection-dnn
+Requires-Dist: matplotlib; extra == "face-detection-dnn"
+Requires-Dist: pandas; extra == "face-detection-dnn"
+Requires-Dist: pyyaml; extra == "face-detection-dnn"
+Requires-Dist: torch; extra == "face-detection-dnn"
+Requires-Dist: torchvision; extra == "face-detection-dnn"
+Requires-Dist: tqdm; extra == "face-detection-dnn"
+Requires-Dist: requests; extra == "face-detection-dnn"
+Provides-Extra: face-recognition
+Requires-Dist: scikit-learn; extra == "face-recognition"
+Requires-Dist: torch; extra == "face-recognition"
+Requires-Dist: torchvision; extra == "face-recognition"
+Provides-Extra: openai-gpt
+Requires-Dist: openai>=1.52.2; extra == "openai-gpt"
+Requires-Dist: python-dotenv; extra == "openai-gpt"
+Provides-Extra: webserver
+Requires-Dist: Flask; extra == "webserver"
+Requires-Dist: Flask-SocketIO; extra == "webserver"
+Provides-Extra: whisper-speech-to-text
+Requires-Dist: openai>=1.52.2; extra == "whisper-speech-to-text"
+Requires-Dist: SpeechRecognition>=3.11.0; extra == "whisper-speech-to-text"
+Requires-Dist: openai-whisper; extra == "whisper-speech-to-text"
+Requires-Dist: soundfile; extra == "whisper-speech-to-text"
+Requires-Dist: python-dotenv; extra == "whisper-speech-to-text"
+Provides-Extra: alphamini
+Requires-Dist: alphamini; extra == "alphamini"
+Requires-Dist: protobuf==3.20.3; extra == "alphamini"
+Requires-Dist: websockets==13.1; extra == "alphamini"
+Dynamic: author
+Dynamic: author-email
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: provides-extra
+Dynamic: requires-dist
+
+# Social Interaction Cloud

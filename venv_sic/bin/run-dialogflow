@@ -1,0 +1,10 @@
+#!/bin/sh
+'''exec' "/Users/rvandelaar/Desktop/School/Master AI Thesis/MSc_AI_Thesis/sic_applications/venv_sic/bin/python3.10" "$0" "$@"
+' '''
+# -*- coding: utf-8 -*-
+import re
+import sys
+from sic_framework.services.dialogflow import main
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    sys.exit(main())
