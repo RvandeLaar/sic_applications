@@ -19,6 +19,7 @@ Uses chain-level stiffness calls for Pepper compatibility:
 - SetLockedJointsRequest with chains ("LArm", "RArm", "Head")
 - NaoqiSetAnglesRequest for precise joint positioning
 - Motion streamer continuously maintains locked positions
+- Walking-engine arm swing disabled to prevent interference with locking
 
 Velocity-Based Collision Protection
 ----------------------------------
@@ -76,7 +77,9 @@ from sic_framework.devices.common_naoqi.naoqi_motion import (
     NaoqiSmartStiffnessRequest,
     NaoqiGetRobotVelocityRequest,
     NaoqiCollisionProtectionRequest,
+    NaoqiMoveArmsEnabledRequest,
 )
+
 
 # ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 # Configuration
@@ -87,7 +90,9 @@ os.environ['REDIS_PASSWORD'] = 'changemeplease'  # Do NOT actually change it
 os.environ['DB_IP'] = '10.0.0.127'  # Your laptop's IP address
 
 # Developer mode flag
-DEV_MODE = False
+# Only use developer mode if you made changes to the social-interaction-cloud that need
+# to be installed on the robots.
+DEV_MODE = True
 
 # Robot IPs
 PUPPET_IP = "10.0.0.168"
@@ -107,7 +112,7 @@ CRITICAL_JOINTS = {
 
 BLOCKAGE_CONFIG = {
     "angle_threshold": 0.25,                # radians - mismatch threshold
-    "sustained_time": 0.5,                  # seconds - time to confirm blockage
+    "sustained_time": 1.0,                  # seconds - time to confirm blockage
     "blockage_ratio": 0.70,                 # fraction of recent samples that must show blockage
 }
 
@@ -123,10 +128,11 @@ class PepperPuppeteer:
         performer_conf = PepperMotionStreamerConf(samples_per_second=STREAM_HZ, stiffness=1.0)
 
         if DEV_MODE:
-            # Use dev_test mode to test new implementations
+            # Use dev_test mode with repo pathto install new code on the robots
             self.puppet = Pepper(puppet_ip, pepper_motion_conf=puppet_conf, dev_test=True, test_repo="/Users/rvandelaar/Desktop/School/Master AI Thesis/MSc_AI_Thesis/social-interaction-cloud")
             self.performer = Pepper(performer_ip, pepper_motion_conf=performer_conf, dev_test=True, test_repo="/Users/rvandelaar/Desktop/School/Master AI Thesis/MSc_AI_Thesis/social-interaction-cloud")
         else:
+            # Use dev_test mode to use your latest version of the SIC on the robots
             self.puppet = Pepper(puppet_ip, pepper_motion_conf=puppet_conf, dev_test=True)
             self.performer = Pepper(performer_ip, pepper_motion_conf=performer_conf, dev_test=True)
 
@@ -191,6 +197,15 @@ class PepperPuppeteer:
         self.performer.motion.request(NaoqiSmartStiffnessRequest(False))
         self.puppet.motion.request(NaoqiBreathingRequest("Arms", False))
         self.performer.motion.request(NaoqiBreathingRequest("Arms", False))
+
+        # Stop NAOqi's walking controller from grabbing the arms
+        try:
+            for r in (self.puppet, self.performer):
+                r.motion.request(NaoqiMoveArmsEnabledRequest(False, False))
+            print("✓ Walking-engine arm swing disabled on both robots")
+        except Exception as e:
+            print(f"Warning: Could not disable arm swing: {e}")
+            print("Continuing without arm swing disable...")
 
         # Puppet: zero stiffness on streamed chains so the operator can move joints
         self.puppet.stiffness.request(
@@ -307,27 +322,35 @@ class PepperPuppeteer:
             
         try:
             self._locked_joints.add(chain)
+            print(f"Added {chain} to locked joints set: {self._locked_joints}")
 
             # Use chain-level stiffness calls for Pepper (not individual joints)
             phys = [chain]  # "LArm", "RArm", or "Head"
 
             # Remember current puppet angles (still get individual joint angles for position)
             individual_joints = ["HeadYaw", "HeadPitch"] if chain == "Head" else CRITICAL_JOINTS[chain]
+            print(f"Getting angles for joints: {individual_joints}")
             angles_response = self.puppet.motion.request(NaoqiGetAnglesRequest(individual_joints, True))
             angles = angles_response.angles
             self._locked_angles.update(dict(zip(individual_joints, angles)))
+            print(f"Stored locked angles: {self._locked_angles}")
 
             # Tell both robots to lock these chains (motion streamer will set stiffness=1.0)
+            print(f"Sending locked joints to motion streamers: {list(self._locked_joints)}")
             for robot in (self.puppet, self.performer):
-                cur = robot.motion_streaming.request(GetLockedJointsRequest()).locked_joints
-                robot.motion_streaming.request(SetLockedJointsRequest(list({*cur, *phys})))
+                print(f"Sending to robot {robot.ip}...")
+                robot.motion_streaming.request(SetLockedJointsRequest(list(self._locked_joints)))
+                print(f"Sent to robot {robot.ip}")
 
             # Set the captured angles on both robots to lock them in position
             angle_values = [self._locked_angles[joint] for joint in individual_joints]
+            print(f"Setting angles on both robots: {dict(zip(individual_joints, angle_values))}")
             for robot in (self.puppet, self.performer):
                 robot.motion.request(
                     NaoqiSetAnglesRequest(individual_joints, angle_values, speed=0.5)
                 )
+            
+            print(f"✓ {chain} locked successfully")
             
         except Exception as e:
             print("✗ Error locking {}: {}".format(chain, e))
@@ -575,7 +598,7 @@ class PepperPuppeteer:
                 pers = ratio >= BLOCKAGE_CONFIG["blockage_ratio"]
                 if pers and chain not in self._active_blockages:
                     self._active_blockages.add(chain)
-                    # self._say(f"{chain} mismatch")
+                    self._say(f"{chain} mismatch")
                     print(f"*** {chain} BLOCKAGE DETECTED ***")
                 elif not pers and chain in self._active_blockages:
                     self._active_blockages.remove(chain)
@@ -714,7 +737,7 @@ class PepperPuppeteer:
         regardless of how the session ends.
         """
         print("Starting puppeteering session. Press <Enter> to stop.")
-        # self._say("Start puppeteering.")
+        self._say("Start puppeteering.")
         self._start_streaming()
 
         try:
@@ -756,7 +779,7 @@ class PepperPuppeteer:
         
         This ensures both robots are left in a safe, stable state.
         """
-        # self._say("We are done puppeteering.")
+        self._say("We are done puppeteering.")
         self._clear_blockage_state()
         self._stop_streaming()
         try:
