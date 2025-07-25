@@ -51,6 +51,8 @@ import os
 import threading
 import time
 from collections import defaultdict
+import csv
+import datetime
 
 # SIC imports
 from sic_framework.devices import Pepper
@@ -92,7 +94,7 @@ os.environ['DB_IP'] = '10.0.0.127'  # Your laptop's IP address
 # Developer mode flag
 # Only use developer mode if you made changes to the social-interaction-cloud that need
 # to be installed on the robots.
-DEV_MODE = True
+DEV_MODE = False
 
 # Robot IPs
 PUPPET_IP = "10.0.0.168"
@@ -115,6 +117,9 @@ BLOCKAGE_CONFIG = {
     "sustained_time": 1.0,                  # seconds - time to confirm blockage
     "blockage_ratio": 0.70,                 # fraction of recent samples that must show blockage
 }
+
+# Timing configuration
+TIMING_FILE = "new_puppeteering_times.csv"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Puppeteering Class
@@ -158,6 +163,10 @@ class PepperPuppeteer:
         self._hist = defaultdict(list)              # per-chain time-series
         self._active_blockages = set()              # chains currently blocked
 
+        # Timing variables
+        self.session_start_time = None
+        self.session_duration = None
+
         # Initialize robots
         self._initialise_robots()
 
@@ -172,6 +181,52 @@ class PepperPuppeteer:
         self._start_velocity_monitor()
 
     # ---------------------------------------------------------------------
+    # Timing functions
+    # ---------------------------------------------------------------------
+    def _start_timing(self):
+        """Start timing the puppeteering session."""
+        self.session_start_time = time.time()
+        print(f"Session started at: {datetime.datetime.now().strftime('%d-%m-%Y, %H:%M')}")
+
+    def _stop_timing(self):
+        """Stop timing and calculate session duration."""
+        if self.session_start_time is not None:
+            self.session_duration = time.time() - self.session_start_time
+            duration_str = self._format_duration(self.session_duration)
+            print(f"Session duration: {duration_str}")
+            return duration_str
+        return "0:00"
+
+    def _format_duration(self, duration_seconds):
+        """Format duration in seconds to MM:SS format."""
+        minutes = int(duration_seconds // 60)
+        seconds = int(duration_seconds % 60)
+        return f"{minutes}:{seconds:02d}"
+
+    def _save_timing_data(self):
+        """Save timing data to CSV file."""
+        if self.session_start_time is None:
+            return
+
+        # Create file with header if it doesn't exist
+        file_exists = os.path.exists(TIMING_FILE)
+        
+        with open(TIMING_FILE, 'a', newline='') as csvfile:
+            fieldnames = ['datetime', 'duration']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            if not file_exists:
+                writer.writeheader()
+            
+            # Write the timing data
+            writer.writerow({
+                'datetime': datetime.datetime.now().strftime('%d-%m-%Y, %H:%M'),
+                'duration': self._format_duration(self.session_duration)
+            })
+        
+        print(f"Timing data saved to {TIMING_FILE}")
+
+    # ---------------------------------------------------------------------
     # Initialisation
     # ---------------------------------------------------------------------
     def _initialise_robots(self):
@@ -181,8 +236,9 @@ class PepperPuppeteer:
         1. Disabling autonomous behaviors that could interfere with manual control
         2. Waking up the robots (required for stiffness control)
         3. Disabling smart stiffness and breathing animations
-        4. Setting appropriate initial stiffness values
-        5. Connecting the motion streaming between robots
+        4. Disabling arm swing so arms stay locked during movement
+        5. Setting appropriate initial stiffness values
+        6. Connecting the motion streaming between robots
         """
         # Disable autonomous behaviour that interferes with manual control
         self.puppet.autonomous.request(NaoSetAutonomousLifeRequest("disabled"))
@@ -275,6 +331,7 @@ class PepperPuppeteer:
         4. Clears blockage state since we're pausing
         """
         self._stop_streaming()
+        self._say("Pausing puppeteering.")
         # Set velocity to 0 to stop base movement
         self.performer.motion.request(NaoqiMoveTowardRequest(0.0, 0.0, 0.0))
         # Pause blockage detection to avoid false alarms
@@ -293,6 +350,7 @@ class PepperPuppeteer:
         The system resumes with the current robot states and locking configurations.
         """
         self._start_streaming()
+        self._say("Resuming puppeteering.")
         # Resume blockage detection
         self._blockage_paused.clear()
     
@@ -737,6 +795,7 @@ class PepperPuppeteer:
         regardless of how the session ends.
         """
         print("Starting puppeteering session. Press <Enter> to stop.")
+        self._start_timing()  # Start timing
         self._say("Start puppeteering.")
         self._start_streaming()
 
@@ -782,6 +841,10 @@ class PepperPuppeteer:
         self._say("We are done puppeteering.")
         self._clear_blockage_state()
         self._stop_streaming()
+
+        # Stop timing and save data
+        duration = self._stop_timing()
+        self._save_timing_data()
         try:
             # guarantee a hard stop
             self.performer.motion.request(

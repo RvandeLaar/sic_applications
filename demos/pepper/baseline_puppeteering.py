@@ -13,6 +13,12 @@ This is the baseline implementation for comparison with the enhanced version.
 Both robots are always returned to a safe rest pose when the program exits.
 """
 
+# External imports
+import csv
+import datetime
+import os
+import time
+
 # SIC imports
 from sic_framework.devices import Pepper
 from sic_framework.devices.common_naoqi.naoqi_stiffness import Stiffness
@@ -43,6 +49,9 @@ PERFORMER_IP = "10.0.0.196"
 ACTIVE_JOINTS = ["Head", "RArm", "LArm"]     # motion chains to stream
 STREAM_HZ = 30                               # samples per second
 
+# Timing configuration
+TIMING_FILE = "baseline_puppeteering_times.csv"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Puppeteering Class
 # ─────────────────────────────────────────────────────────────────────────────
@@ -54,8 +63,12 @@ class PepperPuppeteer:
         puppet_conf = PepperMotionStreamerConf(samples_per_second=STREAM_HZ, stiffness=0.0)
         performer_conf = PepperMotionStreamerConf(samples_per_second=STREAM_HZ, stiffness=1.0)
 
-        self.puppet = Pepper(puppet_ip, pepper_motion_conf=puppet_conf)
-        self.performer = Pepper(performer_ip, pepper_motion_conf=performer_conf)
+        self.puppet = Pepper(puppet_ip, pepper_motion_conf=puppet_conf, dev_test=True)
+        self.performer = Pepper(performer_ip, pepper_motion_conf=performer_conf, dev_test=True)
+
+        # Timing variables
+        self.session_start_time = None
+        self.session_duration = None
 
         # Initialize robots
         self._initialise_robots()
@@ -95,6 +108,52 @@ class PepperPuppeteer:
         self.performer.motion_streaming.connect(self.puppet.motion_streaming)
 
     # ---------------------------------------------------------------------
+    # Timing functions
+    # ---------------------------------------------------------------------
+    def _start_timing(self):
+        """Start timing the puppeteering session."""
+        self.session_start_time = time.time()
+        print(f"Session started at: {datetime.datetime.now().strftime('%d-%m-%Y, %H:%M')}")
+
+    def _stop_timing(self):
+        """Stop timing and calculate session duration."""
+        if self.session_start_time is not None:
+            self.session_duration = time.time() - self.session_start_time
+            duration_str = self._format_duration(self.session_duration)
+            print(f"Session duration: {duration_str}")
+            return duration_str
+        return "0:00"
+
+    def _format_duration(self, duration_seconds):
+        """Format duration in seconds to MM:SS format."""
+        minutes = int(duration_seconds // 60)
+        seconds = int(duration_seconds % 60)
+        return f"{minutes}:{seconds:02d}"
+
+    def _save_timing_data(self):
+        """Save timing data to CSV file."""
+        if self.session_start_time is None:
+            return
+
+        # Create file with header if it doesn't exist
+        file_exists = os.path.exists(TIMING_FILE)
+        
+        with open(TIMING_FILE, 'a', newline='') as csvfile:
+            fieldnames = ['datetime', 'duration']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            if not file_exists:
+                writer.writeheader()
+            
+            # Write the timing data
+            writer.writerow({
+                'datetime': datetime.datetime.now().strftime('%d-%m-%Y, %H:%M'),
+                'duration': self._format_duration(self.session_duration)
+            })
+        
+        print(f"Timing data saved to {TIMING_FILE}")
+
+    # ---------------------------------------------------------------------
     # Convenience wrappers
     # ---------------------------------------------------------------------
     def _say(self, text: str) -> None:
@@ -128,6 +187,7 @@ class PepperPuppeteer:
         to stop. It provides a clean shutdown when interrupted.
         """
         print("Starting puppeteering session. Press <Enter> to stop.")
+        self._start_timing()  # Start timing
         self._say("Start puppeteering.")
         self._start_streaming()
 
@@ -150,9 +210,14 @@ class PepperPuppeteer:
         2. Restores appropriate stiffness values
         3. Re-enables autonomous life
         4. Puts robots into rest pose
+        5. Saves timing data
         """
         self._say("We are done puppeteering.")
         self._stop_streaming()
+
+        # Stop timing and save data
+        duration = self._stop_timing()
+        self._save_timing_data()
 
         # Restore puppet stiffness before rest
         self.puppet.stiffness.request(
